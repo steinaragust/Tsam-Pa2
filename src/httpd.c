@@ -20,8 +20,8 @@
 #include <libxml/xmlwriter.h>
 #include <time.h>
 
-void generateheader(char* request, size_t n, GString* response, GHashTable* strain);
-void generatehtml(char* request, size_t n, GString* response, GHashTable* strain, const char type);
+void generateheader(size_t n, GString* response, GHashTable* strain);
+void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
 void seed(char* request, size_t n, GHashTable* strain, const char type);
 char* timestamp();
 void logtofile(FILE* logger, const char type, GHashTable* strain);
@@ -105,15 +105,17 @@ int main(int argc, char **argv)
 				type = 'h';
 			}
 			seed(&message, n, ogkush, type);
-			generateheader(&message, n, response, ogkush);
-			generatehtml(&message, n, response, ogkush, type);
-                        /* Send the message back. */
-                        write(connfd, response->str, (size_t) response->len);
+			generateheader(n, response, ogkush);
+			if(type != 'h'){
+				generatehtml(n, response, ogkush, type);
+			}
+            /* Send the message back. */
+            write(connfd, response->str, (size_t) response->len);
 			logtofile(log, type, ogkush);
 			response = g_string_free(response, TRUE);
-                        /* We should close the connection. */
-                        shutdown(connfd, SHUT_RDWR);
-                        close(connfd);
+            /* We should close the connection. */
+            shutdown(connfd, SHUT_RDWR);
+            close(connfd);
 			//g_printf("swag: %s\n", strings[0]);
                         /* Print the message to stdout and flush. */
                         fprintf(stdout, "Received:\n%s\n", message);
@@ -125,28 +127,29 @@ int main(int argc, char **argv)
         }
 }
 
-void generatehtml(char* request, size_t n, GString* response, GHashTable* strain, const char type){
+void generatehtml(size_t n, GString* response, GHashTable* strain, const char type){
 	g_string_append(response, "\n");
-	g_string_append(response, "<!DOCTYPE html>\n<html>\n<body>\n<p>\n");
-	g_string_append(response, "http://");
+	g_string_append(response, "<!DOCTYPE html>\n<html>\n<body>\n<p>\nhttp://");
 	g_string_append(response, g_hash_table_lookup(strain, "Address"));
 	g_string_append(response, g_hash_table_lookup(strain, "Query"));
+	//g_printf("lengd 1 strengs: %u\n", response->len);
 	g_string_append(response, "<br>\n");
+	//g_printf("lengd 2 strengs: %u\n", response->len);
 	g_string_append(response, g_hash_table_lookup(strain, "Address"));
-	//g_printf("address string: %s\n", g_hash_table_lookup(strain, "Address"));
+	//g_printf("lengd 3 strengs: %u\n", response->len);
 	g_string_append(response, ":");
 	g_string_append(response, g_hash_table_lookup(strain, "Port"));
-	g_string_append(response, "<br>\n</p>");
+	g_string_append(response, "\n</p>");
 	if(type == 'p'){
 		g_string_append(response, "\n<p>\n");
 		g_string_append(response, g_hash_table_lookup(strain, "Post-Content"));
 		g_string_append(response, "\n</p>");
 	}
 	g_string_append(response, "\n</body>\n</html>");
-	g_printf("html: %s\n", response);
+	//g_printf("html: %s\n", response->str);
 }
 
-void generateheader(char* request, size_t n, GString* response, GHashTable* strain){
+void generateheader(size_t n, GString* response, GHashTable* strain){
 	g_string_append(response, "HTTP/1.1 200 OK\n");
 	g_string_append(response, "Date: ");
 	g_string_append(response, timestamp());
