@@ -21,16 +21,16 @@
 #include <time.h>
 
 void generateheader(char* request, size_t n, GString* response, GHashTable* strain);
-void generatehtml(char* request, size_t n, GString* response, GHashTable* strain);
-void seed(char* request, size_t n, GHashTable* strain);
+void generatehtml(char* request, size_t n, GString* response, GHashTable* strain, const char type);
+void seed(char* request, size_t n, GHashTable* strain, const char type);
 char* timestamp();
 void logtofile(FILE* logger, const char type, GHashTable* strain);
 
 int main(int argc, char **argv)
 {
-        int sockfd;
-        struct sockaddr_in server, client;
-        char message[512];
+    int sockfd;
+    struct sockaddr_in server, client;
+    char message[512];
 	char* end;
 	FILE* log = fopen("log.txt", "a");
 	fclose(log);
@@ -94,14 +94,22 @@ int main(int argc, char **argv)
  			* printf may access memory outside of the
 			* string. */
 			message[n] = '\0';
-			seed(&message, n, ogkush);
-			if(g_strcmp0("GET", end)){
-				generateheader(&message, n, response, ogkush);
-				generatehtml(&message, n, response, ogkush);
+			char type;
+			if(strcmp("GET", end) == 0){
+				type = 'g';
 			}
+			else if(strcmp("POST", end) == 0){
+				type = 'p';
+			}
+			else{
+				type = 'h';
+			}
+			seed(&message, n, ogkush, type);
+			generateheader(&message, n, response, ogkush);
+			generatehtml(&message, n, response, ogkush, type);
                         /* Send the message back. */
                         write(connfd, response->str, (size_t) response->len);
-			logtofile(log, 'g', ogkush);
+			logtofile(log, type, ogkush);
 			response = g_string_free(response, TRUE);
                         /* We should close the connection. */
                         shutdown(connfd, SHUT_RDWR);
@@ -117,9 +125,7 @@ int main(int argc, char **argv)
         }
 }
 
-void generatehtml(char* request, size_t n, GString* response, GHashTable* strain){
-	//if get
-	//g_printf("Port: %s\n", g_hash_table_lookup(strain, "Port"));
+void generatehtml(char* request, size_t n, GString* response, GHashTable* strain, const char type){
 	g_string_append(response, "\n");
 	g_string_append(response, "<!DOCTYPE html>\n<html>\n<body>\n<p>\n");
 	g_string_append(response, "http://");
@@ -127,9 +133,17 @@ void generatehtml(char* request, size_t n, GString* response, GHashTable* strain
 	g_string_append(response, g_hash_table_lookup(strain, "Query"));
 	g_string_append(response, "<br>\n");
 	g_string_append(response, g_hash_table_lookup(strain, "Address"));
+	//g_printf("address string: %s\n", g_hash_table_lookup(strain, "Address"));
 	g_string_append(response, ":");
 	g_string_append(response, g_hash_table_lookup(strain, "Port"));
-	g_string_append(response, "\n</p>\n</body>\n</html>");
+	g_string_append(response, "<br>\n</p>");
+	if(type == 'p'){
+		g_string_append(response, "\n<p>\n");
+		g_string_append(response, g_hash_table_lookup(strain, "Post-Content"));
+		g_string_append(response, "\n</p>");
+	}
+	g_string_append(response, "\n</body>\n</html>");
+	g_printf("html: %s\n", response);
 }
 
 void generateheader(char* request, size_t n, GString* response, GHashTable* strain){
@@ -138,18 +152,16 @@ void generateheader(char* request, size_t n, GString* response, GHashTable* stra
 	g_string_append(response, timestamp());
 	g_string_append(response, "\n");
 	g_string_append(response, "Server: Apache/2\n");
-	g_string_append(response, "Content-Length: 16599\n");
+	//g_string_append(response, "Content-Length: 16599\n");
 	g_string_append(response, "Content-Type: text/html; charset=iso-8859-1\n");
 	//g_printf("response: \n%s\n", response->str);
 }
 
-void seed(char* request, size_t n, GHashTable* strain){
-	g_printf("inni seed");
+void seed(char* request, size_t n, GHashTable* strain, const char type){
 	gchar** strings = g_strsplit(request, "\n", -1);
 	int i = 0;
 	gchar** t;
 	while(i < 4){
-		g_printf("iteration: %d\n", i);	
 		if(i == 0){
 			t = g_strsplit(strings[0], " ", -1);
 			gchar* q = g_strdup(t[1]);
@@ -157,23 +169,33 @@ void seed(char* request, size_t n, GHashTable* strain){
 			g_hash_table_insert(strain, "Query", q);
 			//g_strfreev(t);
 		}
+		if(i == 1){
+			t = g_strsplit(strings[1], ":", -1);
+			gchar* u = g_strdup(t[1] + 1);
+			g_hash_table_insert(strain, "User-Agent", u);
+		}
 		if(i == 2){
 			//ch = g_hash_table_lookup(strain, "Host");
-			gchar* a;
-			gchar* b;
 			t = g_strsplit(strings[2], ":", -1);
-			a = g_strdup(t[1] + 1);
-			b = g_strdup(t[2]);
-			printf("b = %s\n", b);
+			gchar* a = g_strdup(t[1] + 1);
+			gchar* b = g_strdup(t[2]);
 			g_hash_table_insert(strain, "Address", a);
 			g_hash_table_insert(strain, "Port", b);
-			g_printf("Address: %s\n", g_hash_table_lookup(strain, "Address"));
+			//g_printf("Address: %s\n", g_hash_table_lookup(strain, "Address"));
 			//g_printf("Port: %s\n", g_hash_table_lookup(strain, "Port"));
 			//g_strfreev(t);
 		}
 		i += 1;
 	}
-	//g_strfreev(t);
+	if(type == 'p'){
+		g_hash_table_insert(strain, "Content-Length", strings[4] + 16);
+		g_hash_table_insert(strain, "Content-Type", strings[5] + 14);
+		g_hash_table_insert(strain, "Post-Content", strings[7]);
+		/*g_printf("Content-Length: %s\n", g_hash_table_lookup(strain, "Content-Length"));
+		g_printf("Content-Type: %s\n", g_hash_table_lookup(strain, "Content-Type"));
+		g_printf("Post-Content: %s\n", g_hash_table_lookup(strain, "Post-Content"));*/
+	}
+	g_strfreev(t);
 	//g_printf("here: %s\n", strings[0]);
 }
 
@@ -184,8 +206,6 @@ char* timestamp(){
 	rawtime = time(NULL);
 	info = localtime(&rawtime);
 	strftime(buffer, sizeof(buffer) - 1, "%a, %d %b %Y %I:%M:%S %Z", info);
-	//printf("Current local time and date: %s", buffer);
-	//Sat, 03 Oct 2015 11:32:14 GMT
 	return strdup(buffer);
 }
 
@@ -204,5 +224,5 @@ void logtofile(FILE* logger, const char type, GHashTable* strain){
 	}
 	logger = fopen("log.txt", "a");
 	g_fprintf(logger, "%s : %s:%s %s %s : %s\n", timestamp(), g_hash_table_lookup(strain, "Address"), g_hash_table_lookup(strain, "Port"), method, g_hash_table_lookup(strain, "Query"), "200");
-        fclose(logger);
+    fclose(logger);
 }
