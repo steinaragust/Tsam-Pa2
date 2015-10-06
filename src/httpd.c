@@ -187,6 +187,25 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	g_string_append(response, "\n</body>\n</html>\n");
 	//g_printf("html: %s\n", response->str);
 }
+void generateColor(size_t n, GString* response, GHashTable* strain, const char type){
+  g_string_append(response, "\n");
+  g_string_append(response, "<!DOCTYPE html>\n<html>\n<body style=""background-color:");
+  g_string_append(response, g_hash_table_lookup(strain, "Color"));
+  g_string_append(response, "\n"); 
+  g_string_append(response, g_hash_table_lookup(strain, "Host"));
+ g_string_append(response, g_hash_table_lookup(strain, "Query"));
+  //g_printf("lengd 1 strengs: %u\n", response->len);
+  g_string_append(response, "<br>\n");
+  //g_printf("lengd 2 strengs: %u\n", response->len);
+  g_string_append(response, g_hash_table_lookup(strain, "Client-Address"));
+  //g_printf("lengd 3 strengs: %u\n", response->len);
+  g_string_append(response, ":");
+  g_string_append(response, g_hash_table_lookup(strain, "Port"));
+  g_string_append(response, "\n</p>");
+  
+  g_string_append(response, "\n</body>\n</html>\n");
+  //g_printf("html: %s\n", response->str);
+}
 
 
 void generateheader(size_t n, GString* response, GHashTable* strain){
