@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -20,9 +21,15 @@
 #include <libxml/xmlwriter.h>
 #include <time.h>
 
+void freedata(gpointer data){
+	g_printf("%s\n", data);
+	g_printf("yoloswag\n");
+	g_free(data);
+}
+
 void generateheader(size_t n, GString* response, GHashTable* strain);
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
-void seed(char* request, size_t n, GHashTable* strain, const char type);
+void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type);
 char* timestamp();
 void logtofile(FILE* logger, const char type, GHashTable* strain);
 
@@ -34,10 +41,9 @@ int main(int argc, char **argv)
 	char* end;
 	FILE* log = fopen("log.txt", "a");
 	fclose(log);
+	struct timeval pers;
 
 	unsigned int port = strtol(argv[1], &end, 10);
-	end = (char*)malloc(5);
-	end[4] = '\0';
         /* Create and bind a UDP socket */
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         memset(&server, 0, sizeof(server));
@@ -65,6 +71,8 @@ int main(int argc, char **argv)
                 /* Wait for five seconds. */
                 tv.tv_sec = 5;
                 tv.tv_usec = 0;
+				printf("tv.tv_sec: %d\n", tv.tv_sec);
+				printf("tv.tv_usec: %d\n", tv.tv_usec);
                 retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
 
                 if (retval == -1) {
@@ -85,38 +93,40 @@ int main(int argc, char **argv)
                            because it will be zero-termianted
                            below. */
                         ssize_t n = read(connfd, message, sizeof(message) - 1);
-			
-			end = (char*)strncpy(end, message, 4);
+                        g_printf("n read: %zu\n", n);
 			//printf("type: %s\nread: %u\n", end, n);
-			GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+			GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, freedata, freedata);
 			GString* response = g_string_sized_new(1000);
 			/* Zero terminate the message, otherwise
  			* printf may access memory outside of the
 			* string. */
 			message[n] = '\0';
 			char type;
-			if(strcmp("GET", end) == 0){
+			if(message[0] == 'G'){
 				type = 'g';
 			}
-			else if(strcmp("POST", end) == 0){
+			else if(message[0] == 'P'){
 				type = 'p';
 			}
 			else{
 				type = 'h';
 			}
-			seed(&message, n, ogkush, type);
+
+			seed(&message, &client, n, ogkush, type);
 			generateheader(n, response, ogkush);
+			g_printf("type: %c\n", type);
 			if(type != 'h'){
 				generatehtml(n, response, ogkush, type);
 			}
             /* Send the message back. */
             write(connfd, response->str, (size_t) response->len);
-			logtofile(log, type, ogkush);
+			//logtofile(log, type, ogkush);
 			response = g_string_free(response, TRUE);
+			g_hash_table_remove_all(ogkush);
             /* We should close the connection. */
+		
             shutdown(connfd, SHUT_RDWR);
             close(connfd);
-			//g_printf("swag: %s\n", strings[0]);
                         /* Print the message to stdout and flush. */
                         fprintf(stdout, "Received:\n%s\n", message);
                         fflush(stdout);
@@ -130,12 +140,12 @@ int main(int argc, char **argv)
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type){
 	g_string_append(response, "\n");
 	g_string_append(response, "<!DOCTYPE html>\n<html>\n<body>\n<p>\nhttp://");
-	g_string_append(response, g_hash_table_lookup(strain, "Address"));
+	g_string_append(response, g_hash_table_lookup(strain, "Host"));
 	g_string_append(response, g_hash_table_lookup(strain, "Query"));
 	//g_printf("lengd 1 strengs: %u\n", response->len);
 	g_string_append(response, "<br>\n");
 	//g_printf("lengd 2 strengs: %u\n", response->len);
-	g_string_append(response, g_hash_table_lookup(strain, "Address"));
+	g_string_append(response, g_hash_table_lookup(strain, "Client-Address"));
 	//g_printf("lengd 3 strengs: %u\n", response->len);
 	g_string_append(response, ":");
 	g_string_append(response, g_hash_table_lookup(strain, "Port"));
@@ -145,9 +155,10 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 		g_string_append(response, g_hash_table_lookup(strain, "Post-Content"));
 		g_string_append(response, "\n</p>");
 	}
-	g_string_append(response, "\n</body>\n</html>");
+	g_string_append(response, "\n</body>\n</html>\n");
 	//g_printf("html: %s\n", response->str);
 }
+
 
 void generateheader(size_t n, GString* response, GHashTable* strain){
 	g_string_append(response, "HTTP/1.1 200 OK\n");
@@ -160,40 +171,33 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 	//g_printf("response: \n%s\n", response->str);
 }
 
-void seed(char* request, size_t n, GHashTable* strain, const char type){
+void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type){
 	gchar** strings = g_strsplit(request, "\n", -1);
-	int i = 0;
+	int i = 1;
 	gchar** t;
-	while(i < 4){
-		if(i == 0){
-			t = g_strsplit(strings[0], " ", -1);
-			gchar* q = g_strdup(t[1]);
-			//g_printf("q: %s\n", q[1]);
-			g_hash_table_insert(strain, "Query", q);
-			//g_strfreev(t);
-		}
-		if(i == 1){
-			t = g_strsplit(strings[1], ":", -1);
-			gchar* u = g_strdup(t[1] + 1);
-			g_hash_table_insert(strain, "User-Agent", u);
-		}
-		if(i == 2){
-			//ch = g_hash_table_lookup(strain, "Host");
-			t = g_strsplit(strings[2], ":", -1);
-			gchar* a = g_strdup(t[1] + 1);
-			gchar* b = g_strdup(t[2]);
-			g_hash_table_insert(strain, "Address", a);
-			g_hash_table_insert(strain, "Port", b);
-			//g_printf("Address: %s\n", g_hash_table_lookup(strain, "Address"));
-			//g_printf("Port: %s\n", g_hash_table_lookup(strain, "Port"));
-			//g_strfreev(t);
-		}
+	t = g_strsplit(strings[0], " ", -1);
+	gchar* q = g_strdup(t[1]);
+	g_hash_table_insert(strain, strdup("Query"), q);
+	while(i < g_strv_length(strings) - 3){
+		t = g_strsplit(strings[i], ":", -1);
+		gchar* a = g_strdup(t[1] + 1);
+		g_printf("key: %s\n", t[0]);
+		g_hash_table_insert(strain, g_strdup(t[0]), a);
 		i += 1;
 	}
+	uint ip = client->sin_addr.s_addr;
+	gchar* a = (gchar*)g_malloc(INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &ip, a, INET_ADDRSTRLEN);
+	g_hash_table_insert(strain, g_strdup("Client-Address"), a);
+	uint port = htons(client->sin_port);
+	gchar* b = (gchar*)g_malloc(6);
+	g_sprintf(b, "%u\0", port);
+	g_hash_table_insert(strain, g_strdup("Port"), b);
+	/*g_printf("Port here: %u", g_hash_table_lookup(strain, "Port"));
+	g_printf("Address: %s\n", g_hash_table_lookup(strain, "Address"));*/
+
 	if(type == 'p'){
-		g_hash_table_insert(strain, "Content-Length", strings[4] + 16);
-		g_hash_table_insert(strain, "Content-Type", strings[5] + 14);
-		g_hash_table_insert(strain, "Post-Content", strings[7]);
+		g_hash_table_insert(strain, g_strdup("Post-Content"), g_strdup(strings[g_strv_length(strings) - 1]));
 		/*g_printf("Content-Length: %s\n", g_hash_table_lookup(strain, "Content-Length"));
 		g_printf("Content-Type: %s\n", g_hash_table_lookup(strain, "Content-Type"));
 		g_printf("Post-Content: %s\n", g_hash_table_lookup(strain, "Post-Content"));*/
@@ -217,7 +221,6 @@ void logtofile(FILE* logger, const char type, GHashTable* strain){
 	char method[5];
 	if(type == 'g'){
 		strncpy(method, "GET\0", 4);
-		g_printf("þetta er get!\n");
 	}
 	else if(type == 'p'){
 		strncpy(method, "POST\0", 5);
@@ -226,6 +229,11 @@ void logtofile(FILE* logger, const char type, GHashTable* strain){
 		strncpy(method, "HEAD\0", 5);
 	}
 	logger = fopen("log.txt", "a");
-	g_fprintf(logger, "%s : %s:%s %s %s : %s\n", timestamp(), g_hash_table_lookup(strain, "Address"), g_hash_table_lookup(strain, "Port"), method, g_hash_table_lookup(strain, "Query"), "200");
+	/*g_printf("1, %s\n", g_hash_table_lookup(strain, "Client-Address"));
+	g_printf("2, %s\n", g_hash_table_lookup(strain, "Port"));
+	g_printf("3, %s\n", g_hash_table_lookup(strain, "Query"));
+	g_printf("4, %s\n", timestamp());
+	g_printf("5, %s\n", method);*/
+	g_fprintf(logger, "%s : %s:%s %s %s : %s\n", timestamp(), g_hash_table_lookup(strain, "Client-Address"), g_hash_table_lookup(strain, "Port"), method, g_hash_table_lookup(strain, "Query"), "200");
     fclose(logger);
 }
