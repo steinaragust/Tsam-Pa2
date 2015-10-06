@@ -108,7 +108,10 @@ int main(int argc, char **argv)
 			else if(message[0] == 'P'){
 				type = 'p';
 			}
-			else{
+			else if(message[0] == 'C'){ // this is for Color
+			  type = 'c';
+			}
+			else {
 				type = 'h';
 			}
 
