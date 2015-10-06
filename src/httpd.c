@@ -118,9 +118,10 @@ int main(int argc, char **argv)
 			seed(&message, &client, n, ogkush, type);
 			generateheader(n, response, ogkush);
 			g_printf("type: %c\n", type);
-			if(type != 'h'){
+			if(type != 'h' && type != 'c'){
 				generatehtml(n, response, ogkush, type);
 			}
+			
             /* Send the message back. */
             write(connfd, response->str, (size_t) response->len);
 			//logtofile(log, type, ogkush);
