@@ -21,12 +21,6 @@
 #include <libxml/xmlwriter.h>
 #include <time.h>
 
-void freedata(gpointer data){
-	g_printf("%s\n", data);
-	g_printf("yoloswag\n");
-	g_free(data);
-}
-
 void generateheader(size_t n, GString* response, GHashTable* strain);
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type);
@@ -41,18 +35,22 @@ int main(int argc, char **argv)
 	char* end;
 	FILE* log = fopen("log.txt", "a");
 	fclose(log);
-	struct timeval pers;
+	GTimer* pers = NULL;
+	gulong* elapsed = NULL;
+	gpointer connection = NULL;
+	int connfd;
+	int alive = 0;
 
 	unsigned int port = strtol(argv[1], &end, 10);
-        /* Create and bind a UDP socket */
-        sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        memset(&server, 0, sizeof(server));
-        server.sin_family = AF_INET;
-        /* Network functions need arguments in network byte order instead of
-           host byte order. The macros htonl, htons convert the values, */
-        server.sin_addr.s_addr = htonl(INADDR_ANY);
-        server.sin_port = htons(port);
-        bind(sockfd, (struct sockaddr *) &server, (socklen_t) sizeof(server));
+    /* Create and bind a UDP socket */
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    /* Network functions need arguments in network byte order instead of
+       host byte order. The macros htonl, htons convert the values, */
+    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    server.sin_port = htons(port);
+    bind(sockfd, (struct sockaddr *) &server, (socklen_t) sizeof(server));
 
 	/* Before we can accept messages, we have to listen to the port. We allow one
 	 * 1 connection to queue for simplicity.
@@ -71,68 +69,99 @@ int main(int argc, char **argv)
                 /* Wait for five seconds. */
                 tv.tv_sec = 5;
                 tv.tv_usec = 0;
-				printf("tv.tv_sec: %d\n", tv.tv_sec);
-				printf("tv.tv_usec: %d\n", tv.tv_usec);
                 retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
 
                 if (retval == -1) {
-                        perror("select()");
-                } else if (retval > 0) {
-                        /* Data is available, receive it. */
-                        assert(FD_ISSET(sockfd, &rfds));
+                    perror("select()");
+                }
+                else if (retval > 0) {
+                    /* Data is available, receive it. */
+                    assert(FD_ISSET(sockfd, &rfds));
 
-                        /* Copy to len, since recvfrom may change it. */
-                        socklen_t len = (socklen_t) sizeof(client);
+                    /* Copy to len, since recvfrom may change it. */
+                    socklen_t len = (socklen_t) sizeof(client);
 
-                        /* For TCP connectios, we first have to accept. */
-                        int connfd;
-                        connfd = accept(sockfd, (struct sockaddr *) &client,
-                                        &len);
-                        
-                        /* Receive one byte less than declared,
-                           because it will be zero-termianted
-                           below. */
-                        ssize_t n = read(connfd, message, sizeof(message) - 1);
-                        g_printf("n read: %zu\n", n);
-			//printf("type: %s\nread: %u\n", end, n);
-			GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, freedata, freedata);
-			GString* response = g_string_sized_new(1000);
-			/* Zero terminate the message, otherwise
- 			* printf may access memory outside of the
-			* string. */
-			message[n] = '\0';
-			char type;
-			if(message[0] == 'G'){
-				type = 'g';
-			}
-			else if(message[0] == 'P'){
-				type = 'p';
-			}
-			else{
-				type = 'h';
-			}
+                    /* For TCP connectios, we first have to accept. */
+                    if(alive == 0){
+                    	connfd = accept(sockfd, (struct sockaddr *) &client, &len);
+                    	alive = 1;
+                    }
+                    
+                    /* Receive one byte less than declared,
+                       because it will be zero-termianted
+                       below. */
+                    ssize_t n = read(connfd, message, sizeof(message) - 1);
+                    g_printf("n read: %zu\n", n);
+		            if(n > 0){
+						GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+						GString* response = g_string_sized_new(1000);
+						/* Zero terminate the message, otherwise
+			 			* printf may access memory outside of the
+						* string. */
+						message[n] = '\0';
+						char type;
+						if(message[0] == 'G'){
+							type = 'g';
+						}
+						else if(message[0] == 'P'){
+							type = 'p';
+						}
+						else{
+							type = 'h';
+						}
 
-			seed(&message, &client, n, ogkush, type);
-			generateheader(n, response, ogkush);
-			g_printf("type: %c\n", type);
-			if(type != 'h'){
-				generatehtml(n, response, ogkush, type);
-			}
-            /* Send the message back. */
-            write(connfd, response->str, (size_t) response->len);
-			//logtofile(log, type, ogkush);
-			response = g_string_free(response, TRUE);
-			g_hash_table_remove_all(ogkush);
-            /* We should close the connection. */
-		
-            shutdown(connfd, SHUT_RDWR);
-            close(connfd);
-                        /* Print the message to stdout and flush. */
-                        fprintf(stdout, "Received:\n%s\n", message);
-                        fflush(stdout);
-                } else {
-                        fprintf(stdout, "No message in five seconds.\n");
-                        fflush(stdout);
+						seed(&message, &client, n, ogkush, type);
+						generateheader(n, response, ogkush);
+						//g_printf("type: %c\n", type);
+						if(type != 'h'){
+							generatehtml(n, response, ogkush, type);
+						}
+			            /* Send the message back. */
+			            write(connfd, response->str, (size_t) response->len);
+						logtofile(log, type, ogkush);
+						connection = g_hash_table_lookup(ogkush, "Connection");
+						response = g_string_free(response, TRUE);
+						g_hash_table_remove_all(ogkush);
+						/* Print the message to stdout and flush. */
+	                    fprintf(stdout, "Received:\n%s\n", message);
+	                    fflush(stdout);
+					}
+		            /* We should close the connection. */
+		            if(connection == NULL || g_strcmp0("close", connection) == 0 || (pers != NULL && g_timer_elapsed(pers, elapsed) >= 10)){
+		            	g_printf("closes\n");
+		            	alive = 0;
+		            	if(pers != NULL){
+		            		g_timer_destroy(pers);
+		            	}
+		            	pers = NULL;
+			            shutdown(connfd, SHUT_RDWR);
+			            close(connfd);
+			        }
+			        else{
+			        	g_printf("keeps alive\n");
+			        	connection = NULL;
+			        	if(pers == NULL){
+			        		pers = g_timer_new();
+			        	}
+			        	else{
+			        		g_timer_reset(pers);
+			        	}
+			        }
+                }
+                else if((pers != NULL && g_timer_elapsed(pers, elapsed) >= 10)){
+                	printf("closes\n");
+                	alive = 0;
+	            	g_timer_destroy(pers);
+	            	pers = NULL;
+		            shutdown(connfd, SHUT_RDWR);
+		            close(connfd);
+                }
+                else {
+                    fprintf(stdout, "No message in five seconds.\n");
+                    fflush(stdout);
+                    if(pers != NULL){
+                    	g_printf("g_timer_elapsed %f\n", g_timer_elapsed(pers, elapsed));
+                    }
                 }
         }
 }
@@ -181,7 +210,7 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	while(i < g_strv_length(strings) - 3){
 		t = g_strsplit(strings[i], ":", -1);
 		gchar* a = g_strdup(t[1] + 1);
-		g_printf("key: %s\n", t[0]);
+		//g_printf("key: %s\n", t[0]);
 		g_hash_table_insert(strain, g_strdup(t[0]), a);
 		i += 1;
 	}
@@ -203,7 +232,6 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 		g_printf("Post-Content: %s\n", g_hash_table_lookup(strain, "Post-Content"));*/
 	}
 	g_strfreev(t);
-	//g_printf("here: %s\n", strings[0]);
 }
 
 char* timestamp(){
@@ -217,7 +245,6 @@ char* timestamp(){
 }
 
 void logtofile(FILE* logger, const char type, GHashTable* strain){
-	printf("logfile entry\n");
 	char method[5];
 	if(type == 'g'){
 		strncpy(method, "GET\0", 4);
