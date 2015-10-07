@@ -169,9 +169,15 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	g_string_append(response, "\n");
 	g_string_append(response, "<!DOCTYPE html>\n<html>\n");
 	gchar* p = g_hash_table_lookup(strain, "Color");
+	gchar* cook = g_hash_table_lookup(strain, "Cookie");
 	if(p != NULL){
 		g_string_append(response, "<body style=\"background-color:");
 		g_string_append(response, p + 3);
+		g_string_append(response, "\">");
+	}
+	else if(cook != NULL){
+		g_string_append(response, "<body style=\"background-color:");
+		g_string_append(response, cook + 3);
 		g_string_append(response, "\">");
 	}
 	else{
@@ -224,26 +230,6 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	g_string_append(response, "\n</body>\n</html>\n");
 	//g_printf("html: %s\n", response->str);
 }
-void generateColor(size_t n, GString* response, GHashTable* strain, const char type){
-  g_string_append(response, "\n");
-  g_string_append(response, "<!DOCTYPE html>\n<html>\n<body style=""background-color:");
-  g_string_append(response, g_hash_table_lookup(strain, "Color"));
-  g_string_append(response, "\n"); 
-  g_string_append(response, g_hash_table_lookup(strain, "Host"));
- 	g_string_append(response, g_hash_table_lookup(strain, "Query"));
-  //g_printf("lengd 1 strengs: %u\n", response->len);
-  g_string_append(response, "<br>\n");
-  //g_printf("lengd 2 strengs: %u\n", response->len);
-  g_string_append(response, g_hash_table_lookup(strain, "Client-Address"));
-  //g_printf("lengd 3 strengs: %u\n", response->len);
-  g_string_append(response, ":");
-  g_string_append(response, g_hash_table_lookup(strain, "Port"));
-  g_string_append(response, "\n</p>");
-  
-  g_string_append(response, "\n</body>\n</html>\n");
-  //g_printf("html: %s\n", response->str);
-}
-
 
 void generateheader(size_t n, GString* response, GHashTable* strain){
 	g_string_append(response, "HTTP/1.1 200 OK\n");
@@ -254,13 +240,12 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 	//g_string_append(response, "Content-Length: 16599\n");
 	g_string_append(response, "Content-Type: text/html; charset=iso-8859-1\n");
 	//g_printf("response: \n%s\n", response->str);
-	//gchar* p = g_hash_table_lookup(strain, "");
-	/*g_snprintf(
+	gchar* p = g_hash_table_lookup(strain, "Color");
 	if(p != NULL){
-		  gchar* c = g_hash_table_lookup(strain, "Color");
-		  g_string_append(response," Set-Cookie: color=red \n");
-		  g_string_append(response, "red");
-	  }*/
+		  g_string_append(response,"Set-Cookie: ");
+		  g_string_append(response, g_hash_table_lookup(strain, "Color"));
+		  g_string_append(response, "\n");
+	  }
 }
 
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type){
@@ -280,7 +265,6 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 				g_printf("string #%d: %s\n", lsd, l[lsd]);
 				lsd++;
 			}*/
-
 
 			int x = 0;
 			gchar* n;
