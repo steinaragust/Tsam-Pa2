@@ -70,6 +70,7 @@ int main(int argc, char **argv)
                 tv.tv_sec = 5;
                 tv.tv_usec = 0;
                 retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+                g_printf("retval: %d\n", retval);
 
                 if (retval == -1) {
                     perror("select()");
@@ -109,7 +110,6 @@ int main(int argc, char **argv)
 						else{
 							type = 'h';
 						}
-
 						seed(&message, &client, n, ogkush, type);
 						generateheader(n, response, ogkush);
 						//g_printf("type: %c\n", type);
@@ -157,8 +157,7 @@ int main(int argc, char **argv)
 		            close(connfd);
                 }
                 else {
-                    fprintf(stdout, "No message in five seconds.\n");
-                    fflush(stdout);
+                    printf("No message in five seconds.\n");
                     if(pers != NULL){
                     	g_printf("g_timer_elapsed %f\n", g_timer_elapsed(pers, elapsed));
                     }
@@ -168,21 +167,59 @@ int main(int argc, char **argv)
 
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type){
 	g_string_append(response, "\n");
-	g_string_append(response, "<!DOCTYPE html>\n<html>\n<body>\n<p>\nhttp://");
-	g_string_append(response, g_hash_table_lookup(strain, "Host"));
-	g_string_append(response, g_hash_table_lookup(strain, "Query"));
-	//g_printf("lengd 1 strengs: %u\n", response->len);
-	g_string_append(response, "<br>\n");
-	//g_printf("lengd 2 strengs: %u\n", response->len);
-	g_string_append(response, g_hash_table_lookup(strain, "Client-Address"));
-	//g_printf("lengd 3 strengs: %u\n", response->len);
-	g_string_append(response, ":");
-	g_string_append(response, g_hash_table_lookup(strain, "Port"));
-	g_string_append(response, "\n</p>");
-	if(type == 'p'){
-		g_string_append(response, "\n<p>\n");
-		g_string_append(response, g_hash_table_lookup(strain, "Post-Content"));
+	g_string_append(response, "<!DOCTYPE html>\n<html>\n");
+	gchar* p = g_hash_table_lookup(strain, "Color");
+	if(p != NULL){
+		g_string_append(response, "<body style=\"background-color:");
+		g_string_append(response, p);
+		g_string_append(response, "\">");
+	}
+	else{
+		g_string_append(response, "<body>\n<p>\nhttp://");
+		g_string_append(response, g_hash_table_lookup(strain, "Host"));
+		g_string_append(response, g_hash_table_lookup(strain, "Query"));
+		//g_printf("lengd 1 strengs: %u\n", response->len);
+		g_string_append(response, "<br>\n");
+		//g_printf("lengd 2 strengs: %u\n", response->len);
+		g_string_append(response, g_hash_table_lookup(strain, "Client-Address"));
+		//g_printf("lengd 3 strengs: %u\n", response->len);
+		g_string_append(response, ":");
+		g_string_append(response, g_hash_table_lookup(strain, "Port"));
+		p = g_hash_table_lookup(strain, "NArgs");
+		if(p != NULL){
+			g_string_append(response, "<br>\n");
+			//breyta i tölu
+			int n = atoi((char*)p);
+			int i = 0;
+			gchar* buf = (gchar*)malloc(10);
+			gchar* key;
+			gchar* value;
+			while(i < n - 1){
+				g_snprintf(buf, 10, "arg%u", i);
+				key = g_hash_table_lookup(strain, buf);
+				g_snprintf(buf, 10, "val%u", i);
+				value = g_hash_table_lookup(strain, buf);
+				g_string_append(response, key);
+				g_string_append(response, "=");
+				g_string_append(response, value);
+				g_string_append(response, "<br>\n");
+				i++;
+			}
+			g_snprintf(buf, 10, "arg%u", i);
+			key = g_hash_table_lookup(strain, buf);
+			g_snprintf(buf, 10, "val%u", i);
+			value = g_hash_table_lookup(strain, buf);
+			g_string_append(response, key);
+			g_string_append(response, "=");
+			g_string_append(response, value);
+			g_free(buf);
+		}
 		g_string_append(response, "\n</p>");
+		if(type == 'p'){
+			g_string_append(response, "\n<p>\n");
+			g_string_append(response, g_hash_table_lookup(strain, "Post-Content"));
+			g_string_append(response, "\n</p>");
+		}
 	}
 	g_string_append(response, "\n</body>\n</html>\n");
 	//g_printf("html: %s\n", response->str);
@@ -193,7 +230,7 @@ void generateColor(size_t n, GString* response, GHashTable* strain, const char t
   g_string_append(response, g_hash_table_lookup(strain, "Color"));
   g_string_append(response, "\n"); 
   g_string_append(response, g_hash_table_lookup(strain, "Host"));
- g_string_append(response, g_hash_table_lookup(strain, "Query"));
+ 	g_string_append(response, g_hash_table_lookup(strain, "Query"));
   //g_printf("lengd 1 strengs: %u\n", response->len);
   g_string_append(response, "<br>\n");
   //g_printf("lengd 2 strengs: %u\n", response->len);
@@ -222,15 +259,72 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type){
 	gchar** strings = g_strsplit(request, "\n", -1);
 	int i = 1;
-	gchar** t;
-	t = g_strsplit(strings[0], " ", -1);
-	gchar* q = g_strdup(t[1]);
-	g_hash_table_insert(strain, strdup("Query"), q);
+	gchar** t = g_strsplit(strings[0], " ", -1);
+	gchar** k = g_strsplit(t[1], "?", -1);
+	if(g_strv_length(k) > 1){
+		if(g_strcmp0(k[0] + 1, "color") == 0){
+			g_hash_table_insert(strain, g_strdup("Color"), g_strdup(k[1] + 3));
+			//g_printf("color: %s\n", g_hash_table_lookup(strain, "Color"));
+		}
+		else{
+			gchar** l = g_strsplit(k[1], "&", -1);
+			/*int lsd = 0;
+			while(lsd < g_strv_length(l)){
+				g_printf("string #%d: %s\n", lsd, l[lsd]);
+				lsd++;
+			}*/
+
+
+			int x = 0;
+			gchar* n;
+			gchar** s;
+			while(x < g_strv_length(l)){
+				s = g_strsplit(l[x], "=", -1);
+				n = (gchar*)g_malloc(10);
+				g_snprintf(n, 10, "arg%u", x);
+				g_hash_table_insert(strain, n, g_strdup(s[0]));
+				n = (gchar*)g_malloc(10);
+				g_snprintf(n, 10, "val%u", x);
+				g_hash_table_insert(strain, n, g_strdup(s[1]));
+				g_strfreev(s);
+				x++;
+			}
+			n = (gchar*)g_malloc(10);
+			g_snprintf(n, 10, "%u", g_strv_length(l));
+			g_hash_table_insert(strain, g_strdup("NArgs"), n);
+
+
+
+			/*int yolo = 0;
+			gchar* asdf = (gchar*)malloc(10);
+			while(yolo < g_strv_length(l)){
+				g_snprintf(asdf, 10, "arg%u", yolo);
+				g_printf("key: %s\n", g_hash_table_lookup(strain, asdf));
+				g_snprintf(asdf, 10, "val%u", yolo);
+				g_printf("value: %s\n", g_hash_table_lookup(strain, asdf));
+				yolo++;
+			}
+
+
+
+			g_free(asdf);*/
+			gchar* q = g_strdup(t[1]);
+			g_hash_table_insert(strain, g_strdup("Query"), q);
+			g_strfreev(l);
+		}
+	}
+	else{
+		gchar* q = g_strdup(t[1]);
+		g_hash_table_insert(strain, g_strdup("Query"), q);
+	}
+	g_strfreev(k);
+	g_strfreev(t);
 	while(i < g_strv_length(strings) - 3){
 		t = g_strsplit(strings[i], ":", -1);
 		gchar* a = g_strdup(t[1] + 1);
 		//g_printf("key: %s\n", t[0]);
 		g_hash_table_insert(strain, g_strdup(t[0]), a);
+		g_strfreev(t);
 		i += 1;
 	}
 	uint ip = client->sin_addr.s_addr;
@@ -246,11 +340,8 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 
 	if(type == 'p'){
 		g_hash_table_insert(strain, g_strdup("Post-Content"), g_strdup(strings[g_strv_length(strings) - 1]));
-		/*g_printf("Content-Length: %s\n", g_hash_table_lookup(strain, "Content-Length"));
-		g_printf("Content-Type: %s\n", g_hash_table_lookup(strain, "Content-Type"));
-		g_printf("Post-Content: %s\n", g_hash_table_lookup(strain, "Post-Content"));*/
 	}
-	g_strfreev(t);
+	g_strfreev(strings);
 }
 
 char* timestamp(){
@@ -260,7 +351,7 @@ char* timestamp(){
 	rawtime = time(NULL);
 	info = localtime(&rawtime);
 	strftime(buffer, sizeof(buffer) - 1, "%a, %d %b %Y %I:%M:%S %Z", info);
-	return strdup(buffer);
+	return g_strdup(buffer);
 }
 
 void logtofile(FILE* logger, const char type, GHashTable* strain){
