@@ -20,7 +20,7 @@
 #include <libxml/encoding.h>
 #include <libxml/xmlwriter.h>
 #include <time.h>
-
+#include <sys/epoll.h>
 void generateheader(size_t n, GString* response, GHashTable* strain);
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type);
@@ -180,7 +180,7 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 		g_string_append(response, p);
 		g_string_append(response, "\">");
 	}
-	else if(cook != NULL){
+	else if(cook != NULL && g_hash_table_lookup(strain, "Query") != NULL && g_strcmp0(g_hash_table_lookup(strain, "Query") + 1, "color") == 0){
 		g_string_append(response, "<body style=\"background-color:");
 		g_string_append(response, cook + 3);
 		g_string_append(response, "\">");
