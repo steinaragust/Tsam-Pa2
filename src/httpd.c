@@ -182,7 +182,7 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	}
 	else if(cook != NULL){
 		g_string_append(response, "<body style=\"background-color:");
-		g_string_append(response, cook);
+		g_string_append(response, cook + 3);
 		g_string_append(response, "\">");
 	}
 	else{
@@ -255,6 +255,7 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 }
 
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type){
+	g_printf("in seed:\n%s\n", request);
 	gchar** strings = g_strsplit(request, "\n", -1);
 	int i = 1;
 	gchar** t = g_strsplit(strings[0], " ", -1);
@@ -316,7 +317,7 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	}
 	g_strfreev(k);
 	g_strfreev(t);
-	while(i < g_strv_length(strings) - 3){
+	while(i < g_strv_length(strings) - 2){
 		t = g_strsplit(strings[i], ":", 2);
 		gchar* a = g_strdup(t[1] + 1);
 		g_printf("key: %s\n", t[0]);
