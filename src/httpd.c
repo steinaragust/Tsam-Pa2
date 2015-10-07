@@ -254,12 +254,12 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 	//g_string_append(response, "Content-Length: 16599\n");
 	g_string_append(response, "Content-Type: text/html; charset=iso-8859-1\n");
 	//g_printf("response: \n%s\n", response->str);
-	gchar* p = g_hash_table_lookup(strain, "");
-	g_snprintf(
+	gchar* p = g_hash_table_lookup(strain, "Color");
+	
 	if(p != NULL){
-	  gchar* c = g_hash_table_lookup(strain, "Color");
-	  g_string_append(response," Set-Cookie: color=red \n");
-	   g_string_append(response, "red");
+	  g_string_append(response,"Set-Cookie: bg = ");
+	  g_string_append(response, g_hash_table_lookup(strain, "Color"));
+	  g_string_append(response, "\n");
 	  }
 }
 
