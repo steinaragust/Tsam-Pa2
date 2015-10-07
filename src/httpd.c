@@ -77,6 +77,7 @@ int main(int argc, char **argv)
                 }
                 else if (retval > 0) {
                     /* Data is available, receive it. */
+                    //If FD_ISSET
                     assert(FD_ISSET(sockfd, &rfds));
 
                     /* Copy to len, since recvfrom may change it. */
@@ -91,9 +92,10 @@ int main(int argc, char **argv)
                     /* Receive one byte less than declared,
                        because it will be zero-termianted
                        below. */
+                    memset(message, 0, sizeof(message));
                     ssize_t n = read(connfd, message, sizeof(message) - 1);
-                    g_printf("n read: %zu\n", n);
-		            if(n > 0){
+                    g_printf("n read: %zu, is alive: %d, fdisset: %d\n", n, alive, FD_ISSET(sockfd, &rfds));
+		            if(n > 0 && alive){
 						GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 						GString* response = g_string_sized_new(1000);
 						/* Zero terminate the message, otherwise
@@ -126,6 +128,8 @@ int main(int argc, char **argv)
 	                    fprintf(stdout, "Received:\n%s\n", message);
 	                    fflush(stdout);
 					}
+					shutdown(connfd, SHUT_RDWR);
+			        close(connfd);
 		            /* We should close the connection. */
 		            if(connection == NULL || g_strcmp0("close", connection) == 0 || (pers != NULL && g_timer_elapsed(pers, elapsed) >= 10)){
 		            	g_printf("closes\n");
@@ -170,14 +174,15 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	g_string_append(response, "<!DOCTYPE html>\n<html>\n");
 	gchar* p = g_hash_table_lookup(strain, "Color");
 	gchar* cook = g_hash_table_lookup(strain, "Cookie");
+	g_printf("Cookie is: %s\n", cook);
 	if(p != NULL){
 		g_string_append(response, "<body style=\"background-color:");
-		g_string_append(response, p + 3);
+		g_string_append(response, p);
 		g_string_append(response, "\">");
 	}
 	else if(cook != NULL){
 		g_string_append(response, "<body style=\"background-color:");
-		g_string_append(response, cook + 3);
+		g_string_append(response, cook);
 		g_string_append(response, "\">");
 	}
 	else{
@@ -242,7 +247,8 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 	//g_printf("response: \n%s\n", response->str);
 	gchar* p = g_hash_table_lookup(strain, "Color");
 	if(p != NULL){
-		  g_string_append(response,"Set-Cookie: ");
+		  g_string_append(response, "Set-Cookie: ");
+		  g_string_append(response, "bg = ");
 		  g_string_append(response, g_hash_table_lookup(strain, "Color"));
 		  g_string_append(response, "\n");
 	  }
@@ -255,7 +261,7 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	gchar** k = g_strsplit(t[1], "?", -1);
 	if(g_strv_length(k) > 1){
 		if(g_strcmp0(k[0] + 1, "color") == 0){
-			g_hash_table_insert(strain, g_strdup("Color"), g_strdup(k[1]));
+			g_hash_table_insert(strain, g_strdup("Color"), g_strdup(k[1] + 3));
 			//g_printf("color: %s\n", g_hash_table_lookup(strain, "Color"));
 		}
 		else{
@@ -311,9 +317,10 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	g_strfreev(k);
 	g_strfreev(t);
 	while(i < g_strv_length(strings) - 3){
-		t = g_strsplit(strings[i], ":", -1);
+		t = g_strsplit(strings[i], ":", 2);
 		gchar* a = g_strdup(t[1] + 1);
-		//g_printf("key: %s\n", t[0]);
+		g_printf("key: %s\n", t[0]);
+		g_printf("value: %s\n", a);
 		g_hash_table_insert(strain, g_strdup(t[0]), a);
 		g_strfreev(t);
 		i += 1;
