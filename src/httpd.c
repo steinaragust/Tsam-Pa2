@@ -20,6 +20,7 @@
 #include <libxml/encoding.h>
 #include <libxml/xmlwriter.h>
 #include <time.h>
+#include <errno.h>
 
 void generateheader(size_t n, GString* response, GHashTable* strain);
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
@@ -27,10 +28,13 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 char* timestamp();
 void logtofile(FILE* logger, const char type, GHashTable* strain);
 
+GHashTable* timers;
+
 int main(int argc, char **argv)
 {
     int sockfd;
     struct sockaddr_in server, client;
+    fd_set rfds, temp;
     char message[512];
 	char* end;
 	FILE* log = fopen("log.txt", "a");
@@ -39,7 +43,8 @@ int main(int argc, char **argv)
 	gulong* elapsed = NULL;
 	gpointer connection = NULL;
 	int connfd;
-	int alive = 0;
+	int maxfd;
+	timers = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, g_timer_destroy);
 
 	unsigned int port = strtol(argv[1], &end, 10);
     /* Create and bind a UDP socket */
@@ -57,113 +62,101 @@ int main(int argc, char **argv)
 	 */
 	listen(sockfd, 1);
 
+    /* Check whether there is data on the socket fd. */
+    FD_ZERO(&rfds);
+    FD_SET(sockfd, &rfds);
+    maxfd = sockfd;
+
+
         for (;;) {
-                fd_set rfds;
+        		memcpy(&temp, &rfds, sizeof(temp));
                 struct timeval tv;
                 int retval;
-
-                /* Check whether there is data on the socket fd. */
-                FD_ZERO(&rfds);
-                FD_SET(sockfd, &rfds);
-
                 /* Wait for five seconds. */
                 tv.tv_sec = 5;
                 tv.tv_usec = 0;
-                retval = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+                retval = select(maxfd + 1, &temp, NULL, NULL, &tv);
                 g_printf("retval: %d\n", retval);
-
                 if (retval == -1) {
                     perror("select()");
                 }
                 else if (retval > 0) {
                     /* Data is available, receive it. */
-                    //If FD_ISSET
-                    assert(FD_ISSET(sockfd, &rfds));
-
-                    /* Copy to len, since recvfrom may change it. */
-                    socklen_t len = (socklen_t) sizeof(client);
-
-                    /* For TCP connectios, we first have to accept. */
-                    if(alive == 0){
+                    if(FD_ISSET(sockfd, &temp)){
+                    	/* Copy to len, since recvfrom may change it. */
+                    	socklen_t len = (socklen_t) sizeof(client);
+                    	/* For TCP connectios, we first have to accept. */
+                    	sleep(5);
+                    	connfd = accept(sockfd, (struct sockaddr *) &client, &len);
+                    	if (connfd < 0) {
+				            printf("Error in accept(): %s\n", strerror(errno));
+				        }
+				        else{
+				        	FD_SET(connfd, &rfds);
+				        	maxfd = (maxfd < connfd)?connfd:maxfd;
+				        }
+				        FD_CLR(sockfd, &temp);
+                    }
+                    /*if(alive == 0){
                     	connfd = accept(sockfd, (struct sockaddr *) &client, &len);
                     	alive = 1;
-                    }
-                    
-                    /* Receive one byte less than declared,
-                       because it will be zero-termianted
-                       below. */
-                    memset(message, 0, sizeof(message));
-                    ssize_t n = read(connfd, message, sizeof(message) - 1);
-                    g_printf("n read: %zu, is alive: %d, fdisset: %d\n", n, alive, FD_ISSET(sockfd, &rfds));
-		            if(n > 0 && alive){
-						GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-						GString* response = g_string_sized_new(1000);
-						/* Zero terminate the message, otherwise
-			 			* printf may access memory outside of the
-						* string. */
-						message[n] = '\0';
-						char type;
-						if(message[0] == 'G'){
-							type = 'g';
-						}
-						else if(message[0] == 'P'){
-							type = 'p';
-						}
-						else{
-							type = 'h';
-						}
-						seed(&message, &client, n, ogkush, type);
-						generateheader(n, response, ogkush);
-						//g_printf("type: %c\n", type);
-						if(type != 'h'){
-							generatehtml(n, response, ogkush, type);
-						}
-			            /* Send the message back. */
-			            write(connfd, response->str, (size_t) response->len);
-						logtofile(log, type, ogkush);
-						connection = g_hash_table_lookup(ogkush, "Connection");
-						response = g_string_free(response, TRUE);
-						g_hash_table_remove_all(ogkush);
-						/* Print the message to stdout and flush. */
-	                    fprintf(stdout, "Received:\n%s\n", message);
-	                    fflush(stdout);
-					}
-					shutdown(connfd, SHUT_RDWR);
-			        close(connfd);
-		            /* We should close the connection. */
-		            if(connection == NULL || g_strcmp0("close", connection) == 0 || (pers != NULL && g_timer_elapsed(pers, elapsed) >= 10)){
-		            	g_printf("closes\n");
-		            	alive = 0;
-		            	if(pers != NULL){
-		            		g_timer_destroy(pers);
-		            	}
-		            	pers = NULL;
-			            shutdown(connfd, SHUT_RDWR);
-			            close(connfd);
-			        }
-			        else{
-			        	g_printf("keeps alive\n");
-			        	connection = NULL;
-			        	if(pers == NULL){
-			        		pers = g_timer_new();
-			        	}
-			        	else{
-			        		g_timer_reset(pers);
-			        	}
-			        }
-                }
-                else if((pers != NULL && g_timer_elapsed(pers, elapsed) >= 10)){
-                	printf("closes\n");
-                	alive = 0;
-	            	g_timer_destroy(pers);
-	            	pers = NULL;
-		            shutdown(connfd, SHUT_RDWR);
-		            close(connfd);
-                }
-                else {
-                    printf("No message in five seconds.\n");
-                    if(pers != NULL){
-                    	g_printf("g_timer_elapsed %f\n", g_timer_elapsed(pers, elapsed));
+                    }*/
+                    int j;
+                    for(j = 0; j < maxfd + 1; j++){
+                    	if(FD_ISSET(j, &temp)){
+                    		memset(message, 0, sizeof(message));
+                    	/* Receive one byte less than declared,
+	                       because it will be zero-termianted
+	                       below. */
+                    		ssize_t n = read(connfd, message, sizeof(message) - 1);
+                    		g_printf("FD = %d, n = %d\n", j, n);
+           					if(n > 0 && n <= 511){
+		           				GHashTable* ogkush = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+								GString* response = g_string_sized_new(1000);
+								/* Zero terminate the message, otherwise
+					 			* printf may access memory outside of the
+								* string. */
+								message[n] = '\0';
+								char type;
+								if(message[0] == 'G'){
+									type = 'g';
+								}
+								else if(message[0] == 'P'){
+									type = 'p';
+								}
+								else{
+									type = 'h';
+								}
+								seed(&message, &client, n, ogkush, type);
+								if(g_hash_table_lookup(timers, &j) != NULL && g_hash_table_lookup(ogkush, "Connection") != NULL && g_strcmp0(g_hash_table_lookup(ogkush, "Connection"), "keep-alive") == 0){
+									guint* p = g_malloc(sizeof(guint));
+									*p = j;
+									g_hash_table_insert(timers, p, g_timer_new());
+								}
+								g_printf("yolo2\n");
+								generateheader(n, response, ogkush);
+								//g_printf("type: %c\n", type);
+								if(type != 'h'){
+									generatehtml(n, response, ogkush, type);
+								}
+					            /* Send the message back. */
+					            int written = write(j, response->str, (size_t) response->len);
+					            g_printf("wrote: %d\n", written);
+								logtofile(log, type, ogkush);
+								connection = g_hash_table_lookup(ogkush, "Connection");
+								response = g_string_free(response, TRUE);
+								g_hash_table_remove_all(ogkush);
+								/* Print the message to stdout and flush. */
+			                    fprintf(stdout, "Received:\n%s\n", message);
+			                    fflush(stdout);
+			                    if(g_hash_table_lookup(timers, &j) == NULL || g_strcmp0(g_hash_table_lookup(ogkush, "Connection"), "close") == 0 || (g_hash_table_lookup(timers, &j) != NULL && g_timer_elapsed(g_hash_table_lookup(timers, &j), elapsed) >= 30)){
+			                    	g_hash_table_remove(timers, &j);
+			                    	shutdown(j, SHUT_RDWR);
+			                    	close(j);
+			                    	FD_CLR(j, &rfds);
+			                    }
+           					}
+                    	}
                     }
                 }
         }
@@ -174,20 +167,22 @@ void generatehtml(size_t n, GString* response, GHashTable* strain, const char ty
 	g_string_append(response, "<!DOCTYPE html>\n<html>\n");
 	gchar* p = g_hash_table_lookup(strain, "Color");
 	gchar* cook = g_hash_table_lookup(strain, "Cookie");
-	g_printf("Cookie is: %s\n", cook);
+	//g_printf("Cookie is: %s\n", cook);
 	if(p != NULL){
 		g_string_append(response, "<body style=\"background-color:");
 		g_string_append(response, p);
 		g_string_append(response, "\">");
 	}
-	else if(cook != NULL){
+	else if(cook != NULL && g_hash_table_lookup(strain, "Query") != NULL && g_strcmp0(g_hash_table_lookup(strain, "Query") + 1, "color") == 0){
 		g_string_append(response, "<body style=\"background-color:");
 		g_string_append(response, cook + 3);
 		g_string_append(response, "\">");
 	}
 	else{
 		g_string_append(response, "<body>\n<p>\nhttp://");
-		g_string_append(response, g_hash_table_lookup(strain, "Host"));
+		gchar** rickjames = g_strsplit(g_hash_table_lookup(strain, "Host"), ":", -1);
+		g_string_append(response, rickjames[0]);
+		g_strfreev(rickjames);
 		g_string_append(response, g_hash_table_lookup(strain, "Query"));
 		//g_printf("lengd 1 strengs: %u\n", response->len);
 		g_string_append(response, "<br>\n");
@@ -255,7 +250,7 @@ void generateheader(size_t n, GString* response, GHashTable* strain){
 }
 
 void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strain, const char type){
-	g_printf("in seed:\n%s\n", request);
+	//g_printf("in seed:\n%s\n", request);
 	gchar** strings = g_strsplit(request, "\n", -1);
 	int i = 1;
 	gchar** t = g_strsplit(strings[0], " ", -1);
@@ -267,17 +262,18 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 		}
 		else{
 			gchar** l = g_strsplit(k[1], "&", -1);
-			/*int lsd = 0;
-			while(lsd < g_strv_length(l)){
-				g_printf("string #%d: %s\n", lsd, l[lsd]);
-				lsd++;
-			}*/
 
 			int x = 0;
 			gchar* n;
 			gchar** s;
+			int it = 0;
 			while(x < g_strv_length(l)){
 				s = g_strsplit(l[x], "=", -1);
+				if(g_strv_length(s) < 2){
+					x++;
+					continue;
+				}
+				it++;
 				n = (gchar*)g_malloc(10);
 				g_snprintf(n, 10, "arg%u", x);
 				g_hash_table_insert(strain, n, g_strdup(s[0]));
@@ -287,25 +283,11 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 				g_strfreev(s);
 				x++;
 			}
-			n = (gchar*)g_malloc(10);
-			g_snprintf(n, 10, "%u", g_strv_length(l));
-			g_hash_table_insert(strain, g_strdup("NArgs"), n);
-
-
-
-			/*int yolo = 0;
-			gchar* asdf = (gchar*)malloc(10);
-			while(yolo < g_strv_length(l)){
-				g_snprintf(asdf, 10, "arg%u", yolo);
-				g_printf("key: %s\n", g_hash_table_lookup(strain, asdf));
-				g_snprintf(asdf, 10, "val%u", yolo);
-				g_printf("value: %s\n", g_hash_table_lookup(strain, asdf));
-				yolo++;
+			if(it > 0){
+				n = (gchar*)g_malloc(10);
+				g_snprintf(n, 10, "%u", it);
+				g_hash_table_insert(strain, g_strdup("NArgs"), n);
 			}
-
-
-
-			g_free(asdf);*/
 			gchar* q = g_strdup(t[1]);
 			g_hash_table_insert(strain, g_strdup("Query"), q);
 			g_strfreev(l);
@@ -320,8 +302,8 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	while(i < g_strv_length(strings) - 2){
 		t = g_strsplit(strings[i], ":", 2);
 		gchar* a = g_strdup(t[1] + 1);
-		g_printf("key: %s\n", t[0]);
-		g_printf("value: %s\n", a);
+		/*g_printf("key: %s\n", t[0]);
+		g_printf("value: %s\n", a);*/
 		g_hash_table_insert(strain, g_strdup(t[0]), a);
 		g_strfreev(t);
 		i += 1;
