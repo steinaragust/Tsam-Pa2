@@ -21,6 +21,7 @@
 #include <libxml/xmlwriter.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/epoll.h>
 
 void generateheader(size_t n, GString* response, GHashTable* strain);
 void generatehtml(size_t n, GString* response, GHashTable* strain, const char type);
@@ -150,7 +151,9 @@ int main(int argc, char **argv)
 			                    fprintf(stdout, "Received:\n%s\n", message);
 			                    fflush(stdout);
 			                    if(g_hash_table_lookup(timers, &j) == NULL || g_strcmp0(g_hash_table_lookup(ogkush, "Connection"), "close") == 0 || (g_hash_table_lookup(timers, &j) != NULL && g_timer_elapsed(g_hash_table_lookup(timers, &j), elapsed) >= 30)){
-			                    	g_hash_table_remove(timers, &j);
+			                    	if(g_hash_table_lookup(timers, &j) !=NULL){
+			                    		g_hash_table_remove(timers, &j);
+			                    	}
 			                    	shutdown(j, SHUT_RDWR);
 			                    	close(j);
 			                    	FD_CLR(j, &rfds);
