@@ -84,10 +84,11 @@ int main(int argc, char **argv)
                 else if (retval > 0) {
                     /* Data is available, receive it. */
                     if(FD_ISSET(sockfd, &temp)){
+                    	g_printf("%d is not set\n", sockfd);
                     	/* Copy to len, since recvfrom may change it. */
                     	socklen_t len = (socklen_t) sizeof(client);
                     	/* For TCP connectios, we first have to accept. */
-                    	sleep(5);
+                    	//sleep(5);
                     	connfd = accept(sockfd, (struct sockaddr *) &client, &len);
                     	if (connfd < 0) {
 				            printf("Error in accept(): %s\n", strerror(errno));
@@ -98,10 +99,6 @@ int main(int argc, char **argv)
 				        }
 				        FD_CLR(sockfd, &temp);
                     }
-                    /*if(alive == 0){
-                    	connfd = accept(sockfd, (struct sockaddr *) &client, &len);
-                    	alive = 1;
-                    }*/
                     int j;
                     for(j = 0; j < maxfd + 1; j++){
                     	if(FD_ISSET(j, &temp)){
@@ -129,12 +126,23 @@ int main(int argc, char **argv)
 									type = 'h';
 								}
 								seed(&message, &client, n, ogkush, type);
-								if(g_hash_table_lookup(timers, &j) != NULL && g_hash_table_lookup(ogkush, "Connection") != NULL && g_strcmp0(g_hash_table_lookup(ogkush, "Connection"), "keep-alive") == 0){
-									guint* p = g_malloc(sizeof(guint));
-									*p = j;
-									g_hash_table_insert(timers, p, g_timer_new());
+								/*gchar* a = g_hash_table_lookup(ogkush, "Connection");
+								gchar* b = (gchar*)calloc(11, 1);
+								g_snprintf(b, 11, "%s\0", a);
+								int c = g_strcmp0(b, "keep-alive");
+								if(g_hash_table_lookup(ogkush, "Connection") != NULL && c == 0){	
+									g_printf("keeping alive\n");
+									GTimer* t = g_hash_table_lookup(timers, &j);
+									if(t == NULL){
+										guint* p = g_malloc(sizeof(guint));
+										*p = j;
+										g_hash_table_insert(timers, p, g_timer_new());
+									}
+									else{
+										g_timer_reset(t);
+									}
 								}
-								g_printf("yolo2\n");
+								g_free(c);*/
 								generateheader(n, response, ogkush);
 								//g_printf("type: %c\n", type);
 								if(type != 'h'){
@@ -150,14 +158,22 @@ int main(int argc, char **argv)
 								/* Print the message to stdout and flush. */
 			                    fprintf(stdout, "Received:\n%s\n", message);
 			                    fflush(stdout);
-			                    if(g_hash_table_lookup(timers, &j) == NULL || g_strcmp0(g_hash_table_lookup(ogkush, "Connection"), "close") == 0 || (g_hash_table_lookup(timers, &j) != NULL && g_timer_elapsed(g_hash_table_lookup(timers, &j), elapsed) >= 30)){
-			                    	if(g_hash_table_lookup(timers, &j) !=NULL){
+								/*b = (gchar*)calloc(6, 1);
+								g_snprintf(b, 6, "%s\0", connection);
+								c = g_strcmp0(b, "close");
+			                    if(g_hash_table_lookup(timers, &j) == NULL || c == 0 || (g_hash_table_lookup(timers, &j) != NULL && g_timer_elapsed(g_hash_table_lookup(timers, &j), elapsed) >= 10)){
+			                    	if(g_hash_table_lookup(timers, &j) != NULL){
 			                    		g_hash_table_remove(timers, &j);
 			                    	}
+			                    	g_printf("closing fd nr: %d\n", j);
 			                    	shutdown(j, SHUT_RDWR);
 			                    	close(j);
 			                    	FD_CLR(j, &rfds);
 			                    }
+			                    free(b);*/
+			                    shutdown(j, SHUT_RDWR);
+			                    close(j);
+			                    FD_CLR(j, &rfds);
            					}
                     	}
                     }
@@ -278,10 +294,10 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 				}
 				it++;
 				n = (gchar*)g_malloc(10);
-				g_snprintf(n, 10, "arg%u", x);
+				g_snprintf(n, 10, "arg%u\0", x);
 				g_hash_table_insert(strain, n, g_strdup(s[0]));
 				n = (gchar*)g_malloc(10);
-				g_snprintf(n, 10, "val%u", x);
+				g_snprintf(n, 10, "val%u\0", x);
 				g_hash_table_insert(strain, n, g_strdup(s[1]));
 				g_strfreev(s);
 				x++;
@@ -304,10 +320,10 @@ void seed(char* request, struct sockaddr_in* client, size_t n, GHashTable* strai
 	g_strfreev(t);
 	while(i < g_strv_length(strings) - 2){
 		t = g_strsplit(strings[i], ":", 2);
-		gchar* a = g_strdup(t[1] + 1);
-		/*g_printf("key: %s\n", t[0]);
+		//gchar* a = g_strdup(t[1] + 1);
+		/*g_printf("key: %s, i\n", t[0]);
 		g_printf("value: %s\n", a);*/
-		g_hash_table_insert(strain, g_strdup(t[0]), a);
+		g_hash_table_insert(strain, g_strdup(t[0]), g_strdup(t[1] + 1));
 		g_strfreev(t);
 		i += 1;
 	}
